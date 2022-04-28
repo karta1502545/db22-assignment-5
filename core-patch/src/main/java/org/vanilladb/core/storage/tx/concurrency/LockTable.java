@@ -16,7 +16,6 @@
 package org.vanilladb.core.storage.tx.concurrency;
 
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
@@ -95,9 +94,9 @@ class LockTable {
 		}
 	}
 
-	private Map<Object, Lockers> lockerMap = new HashMap<Object, Lockers>();
+	private Map<Object, Lockers> lockerMap = new ConcurrentHashMap<Object, Lockers>();
 	private Map<Long, Set<Object>> lockByMap = new ConcurrentHashMap<Long, Set<Object>>();
-	private Set<Long> txnsToBeAborted = Collections.synchronizedSet(new HashSet<Long>());
+	private Set<Long> txnsToBeAborted = Collections.newSetFromMap(new ConcurrentHashMap<Long, Boolean>());
 	private Map<Long, Object> txWaitMap = new ConcurrentHashMap<Long, Object>();
 	private BlockingQueue<Long> toBeNotified = new ArrayBlockingQueue<Long>(1000);
 	private final Object anchors[] = new Object[1009];
@@ -173,30 +172,33 @@ class LockTable {
 	void sLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
-		synchronized (anchor) {
-			Lockers lks = prepareLockers(obj);
+		try {
+			synchronized (anchor) {
+				Lockers lks = prepareLockers(obj);
 
-			if (hasSLock(lks, txNum))
-				return;
+				if (hasSLock(lks, txNum))
+					return;
 
-			try {
-				long timestamp = System.currentTimeMillis();
-				while (!sLockable(lks, txNum) && !waitingTooLong(timestamp)) {
-					avoidDeadlock(lks, txNum, S_LOCK);
-					lks.requestSet.add(txNum);
+				try {
+					long timestamp = System.currentTimeMillis();
+					while (!sLockable(lks, txNum) && !waitingTooLong(timestamp)) {
+						avoidDeadlock(lks, txNum, S_LOCK);
+						lks.requestSet.add(txNum);
 
-					anchor.wait(MAX_TIME);
-					lks.requestSet.remove(txNum);
+						anchor.wait(MAX_TIME);
+						lks.requestSet.remove(txNum);
+					}
+					if (!sLockable(lks, txNum))
+						throw new LockAbortException();
+					lks.sLockers.add(txNum);
+					getObjectSet(txNum).add(obj);
+				} catch (InterruptedException e) {
+					throw new LockAbortException("abort tx." + txNum + " by interrupted");
 				}
-				if (!sLockable(lks, txNum))
-					throw new LockAbortException();
-				lks.sLockers.add(txNum);
-				getObjectSet(txNum).add(obj);
-			} catch (InterruptedException e) {
-				throw new LockAbortException("abort tx." + txNum + " by interrupted");
 			}
+		} finally {
+			txWaitMap.remove(txNum);
 		}
-		txWaitMap.remove(txNum);
 	}
 
 	/**
@@ -212,30 +214,33 @@ class LockTable {
 	void xLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
-		synchronized (anchor) {
-			Lockers lks = prepareLockers(obj);
+		try {
+			synchronized (anchor) {
+				Lockers lks = prepareLockers(obj);
 
-			if (hasXLock(lks, txNum))
-				return;
+				if (hasXLock(lks, txNum))
+					return;
 
-			try {
-				long timestamp = System.currentTimeMillis();
-				while (!xLockable(lks, txNum) && !waitingTooLong(timestamp)) {
-					avoidDeadlock(lks, txNum, X_LOCK);
-					lks.requestSet.add(txNum);
+				try {
+					long timestamp = System.currentTimeMillis();
+					while (!xLockable(lks, txNum) && !waitingTooLong(timestamp)) {
+						avoidDeadlock(lks, txNum, X_LOCK);
+						lks.requestSet.add(txNum);
 
-					anchor.wait(MAX_TIME);
-					lks.requestSet.remove(txNum);
-				}
-				if (!xLockable(lks, txNum))
+						anchor.wait(MAX_TIME);
+						lks.requestSet.remove(txNum);
+					}
+					if (!xLockable(lks, txNum))
+						throw new LockAbortException();
+					lks.xLocker = txNum;
+					getObjectSet(txNum).add(obj);
+				} catch (InterruptedException e) {
 					throw new LockAbortException();
-				lks.xLocker = txNum;
-				getObjectSet(txNum).add(obj);
-			} catch (InterruptedException e) {
-				throw new LockAbortException();
+				}
 			}
+		} finally {
+			txWaitMap.remove(txNum);
 		}
-		txWaitMap.remove(txNum);
 	}
 
 	/**
@@ -251,30 +256,33 @@ class LockTable {
 	void sixLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
-		synchronized (anchor) {
-			Lockers lks = prepareLockers(obj);
+		try {
+			synchronized (anchor) {
+				Lockers lks = prepareLockers(obj);
 
-			if (hasSixLock(lks, txNum))
-				return;
+				if (hasSixLock(lks, txNum))
+					return;
 
-			try {
-				long timestamp = System.currentTimeMillis();
-				while (!sixLockable(lks, txNum) && !waitingTooLong(timestamp)) {
-					avoidDeadlock(lks, txNum, SIX_LOCK);
-					lks.requestSet.add(txNum);
+				try {
+					long timestamp = System.currentTimeMillis();
+					while (!sixLockable(lks, txNum) && !waitingTooLong(timestamp)) {
+						avoidDeadlock(lks, txNum, SIX_LOCK);
+						lks.requestSet.add(txNum);
 
-					anchor.wait(MAX_TIME);
-					lks.requestSet.remove(txNum);
-				}
-				if (!sixLockable(lks, txNum))
+						anchor.wait(MAX_TIME);
+						lks.requestSet.remove(txNum);
+					}
+					if (!sixLockable(lks, txNum))
+						throw new LockAbortException();
+					lks.sixLocker = txNum;
+					getObjectSet(txNum).add(obj);
+				} catch (InterruptedException e) {
 					throw new LockAbortException();
-				lks.sixLocker = txNum;
-				getObjectSet(txNum).add(obj);
-			} catch (InterruptedException e) {
-				throw new LockAbortException();
+				}
 			}
+		} finally {
+			txWaitMap.remove(txNum);
 		}
-		txWaitMap.remove(txNum);
 	}
 
 	/**
@@ -289,28 +297,31 @@ class LockTable {
 	void isLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
-		synchronized (anchor) {
-			Lockers lks = prepareLockers(obj);
-			if (hasIsLock(lks, txNum))
-				return;
-			try {
-				long timestamp = System.currentTimeMillis();
-				while (!isLockable(lks, txNum) && !waitingTooLong(timestamp)) {
-					avoidDeadlock(lks, txNum, IS_LOCK);
-					lks.requestSet.add(txNum);
+		try {
+			synchronized (anchor) {
+				Lockers lks = prepareLockers(obj);
+				if (hasIsLock(lks, txNum))
+					return;
+				try {
+					long timestamp = System.currentTimeMillis();
+					while (!isLockable(lks, txNum) && !waitingTooLong(timestamp)) {
+						avoidDeadlock(lks, txNum, IS_LOCK);
+						lks.requestSet.add(txNum);
 
-					anchor.wait(MAX_TIME);
-					lks.requestSet.remove(txNum);
-				}
-				if (!isLockable(lks, txNum))
+						anchor.wait(MAX_TIME);
+						lks.requestSet.remove(txNum);
+					}
+					if (!isLockable(lks, txNum))
+						throw new LockAbortException();
+					lks.isLockers.add(txNum);
+					getObjectSet(txNum).add(obj);
+				} catch (InterruptedException e) {
 					throw new LockAbortException();
-				lks.isLockers.add(txNum);
-				getObjectSet(txNum).add(obj);
-			} catch (InterruptedException e) {
-				throw new LockAbortException();
+				}
 			}
+		} finally {
+			txWaitMap.remove(txNum);
 		}
-		txWaitMap.remove(txNum);
 	}
 
 	/**
@@ -325,30 +336,33 @@ class LockTable {
 	void ixLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
-		synchronized (anchor) {
-			Lockers lks = prepareLockers(obj);
+		try {
+			synchronized (anchor) {
+				Lockers lks = prepareLockers(obj);
 
-			if (hasIxLock(lks, txNum))
-				return;
+				if (hasIxLock(lks, txNum))
+					return;
 
-			try {
-				long timestamp = System.currentTimeMillis();
-				while (!ixLockable(lks, txNum) && !waitingTooLong(timestamp)) {
-					avoidDeadlock(lks, txNum, IX_LOCK);
-					lks.requestSet.add(txNum);
+				try {
+					long timestamp = System.currentTimeMillis();
+					while (!ixLockable(lks, txNum) && !waitingTooLong(timestamp)) {
+						avoidDeadlock(lks, txNum, IX_LOCK);
+						lks.requestSet.add(txNum);
 
-					anchor.wait(MAX_TIME);
-					lks.requestSet.remove(txNum);
-				}
-				if (!ixLockable(lks, txNum))
+						anchor.wait(MAX_TIME);
+						lks.requestSet.remove(txNum);
+					}
+					if (!ixLockable(lks, txNum))
+						throw new LockAbortException();
+					lks.ixLockers.add(txNum);
+					getObjectSet(txNum).add(obj);
+				} catch (InterruptedException e) {
 					throw new LockAbortException();
-				lks.ixLockers.add(txNum);
-				getObjectSet(txNum).add(obj);
-			} catch (InterruptedException e) {
-				throw new LockAbortException();
+				}
 			}
+		} finally {
+			txWaitMap.remove(txNum);
 		}
-		txWaitMap.remove(txNum);
 	}
 
 	/**

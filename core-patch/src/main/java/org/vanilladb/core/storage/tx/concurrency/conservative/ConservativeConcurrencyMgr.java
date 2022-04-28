@@ -1,8 +1,9 @@
-package org.vanilladb.core.storage.tx.concurrency;
+package org.vanilladb.core.storage.tx.concurrency.conservative;
 
 import org.vanilladb.core.storage.file.BlockId;
 import org.vanilladb.core.storage.record.RecordId;
 import org.vanilladb.core.storage.tx.Transaction;
+import org.vanilladb.core.storage.tx.concurrency.ConcurrencyMgr;
 
 public class ConservativeConcurrencyMgr extends ConcurrencyMgr {
 
