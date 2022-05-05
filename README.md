@@ -124,9 +124,13 @@ public class PrimaryKey  {
 ## Deadline
 
 ### Phase 1
-Submit your work before **2022/05/11 (Wed.) 23:59:59**.
+~~Submit your work before **2022/05/11 (Wed.) 23:59:59**.~~
 
-### Phase 2
 Submit your work before **2022/05/18 (Wed.) 23:59:59**.
 
-Late submission will NOT be accepted.
+### Phase 2
+~~Submit your work before **2022/05/18 (Wed.) 23:59:59**.~~
+
+Submit your work before **2022/05/25 (Wed.) 23:59:59**.
+
+<strong>Late submission will NOT be accepted.<strong>
