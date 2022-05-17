@@ -61,6 +61,14 @@ public class MicroTxnProcParamHelper extends StoredProcedureParamHelper {
 		itemPrice[idx] = d;
 	}
 
+	public int[] getReadItemIdList() {
+		return readItemId;
+	}
+
+	public int[] getWriteItemIdList() {
+		return writeItemId;
+	}
+
 	@Override
 	public void prepareParameters(Object... pars) {
 

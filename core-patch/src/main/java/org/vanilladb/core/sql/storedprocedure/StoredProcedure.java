@@ -38,7 +38,6 @@ public abstract class StoredProcedure<H extends StoredProcedureParamHelper> {
 	public StoredProcedure(H helper) {
 		if (helper == null)
 			throw new IllegalArgumentException("paramHelper should not be null");
-		
 		paramHelper = helper;
 	}
 	
@@ -50,6 +49,7 @@ public abstract class StoredProcedure<H extends StoredProcedureParamHelper> {
 		boolean isReadOnly = paramHelper.isReadOnly();
 		tx = VanillaDb.txMgr().newTransaction(
 			Connection.TRANSACTION_SERIALIZABLE, isReadOnly);
+			// TODO: We may need to change isolation mode
 	}
 	
 	public SpResultSet execute() {
@@ -57,7 +57,6 @@ public abstract class StoredProcedure<H extends StoredProcedureParamHelper> {
 		
 		try {
 			executeSql();
-			
 			// The transaction finishes normally
 			tx.commit();
 			isCommitted = true;
