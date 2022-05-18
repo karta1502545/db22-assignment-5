@@ -29,8 +29,8 @@ public class ConservativeConcurrencyMgr extends ConcurrencyMgr {
 				try {
 					lockTbl.sLock(recId, txNum);
 				} catch(Exception e) {
-					System.out.println("ReadRecordIds : " + readRecordIds.toString());
-					System.out.println(txNum + ": " + recId + " getReadLock failed.");
+					// System.out.println("ReadRecordIds : " + readRecordIds.toString());
+					// System.out.println(txNum + ": " + recId + " getReadLock failed.");
 				}
 			}
 			for (int i=0; i<writeRecordIds.size(); i++) {
@@ -38,7 +38,7 @@ public class ConservativeConcurrencyMgr extends ConcurrencyMgr {
 				try {
 					lockTbl.xLock(recId, txNum);
 				} catch(Exception e) {
-					System.out.println(txNum + ": " + recId + " getWriteLock failed.");
+					// System.out.println(txNum + ": " + recId + " getWriteLock failed.");
 				}
 			}
 			// System.out.println(txNum + "is finished locking...");
