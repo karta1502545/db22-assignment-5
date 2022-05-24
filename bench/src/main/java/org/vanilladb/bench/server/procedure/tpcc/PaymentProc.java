@@ -15,17 +15,107 @@
  *******************************************************************************/
 package org.vanilladb.bench.server.procedure.tpcc;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.vanilladb.bench.benchmarks.tpcc.TpccConstants;
+import org.vanilladb.bench.benchmarks.tpcc.TpccParameters;
 import org.vanilladb.bench.server.param.tpcc.PaymentProcParamHelper;
 import org.vanilladb.bench.server.procedure.StoredProcedureHelper;
 import org.vanilladb.core.query.algebra.Scan;
+import org.vanilladb.core.sql.Constant;
+import org.vanilladb.core.sql.IntegerConstant;
+import org.vanilladb.core.sql.PrimaryKey;
 import org.vanilladb.core.sql.storedprocedure.StoredProcedure;
 import org.vanilladb.core.storage.tx.Transaction;
 
 public class PaymentProc extends StoredProcedure<PaymentProcParamHelper> {
+	
+	// XXX: hard-code the history ID
+	private static AtomicInteger[][][] historyIds;
+	static {
+		int warehouseCount = TpccParameters.NUM_WAREHOUSES;
+		historyIds = new AtomicInteger[warehouseCount][TpccConstants.DISTRICTS_PER_WAREHOUSE][TpccConstants.CUSTOMERS_PER_DISTRICT];
+		for (int i = 0; i < warehouseCount; i++)
+			for (int j = 0; j < TpccConstants.DISTRICTS_PER_WAREHOUSE; j++)
+				for (int k = 0; k < TpccConstants.CUSTOMERS_PER_DISTRICT; k++)
+					historyIds[i][j][k] = new AtomicInteger(2);
+	}
+	
+	public static int getNextHistoryId(int cwid, int cdid, int cid) {
+		return historyIds[cwid - 1][cdid - 1][cid - 1].getAndIncrement();
+	}
 
 	public PaymentProc() {
 		super(new PaymentProcParamHelper());
 	}
+	
+	private PrimaryKey warehouseKey, districtKey, customerKey;
+	private PrimaryKey historyKey;
+	// SQL Constants
+	Constant widCon, didCon, cwidCon, cdidCon, cidCon, hidCon;
+	private Map<String, Constant> keyEntryMap;
+	
+	private int hardCodedHid;
+	
+	@Override
+	protected void prepareKeys() {
+		PaymentProcParamHelper paramHelper = getParamHelper();
+		
+		// XXX: hard code the history id
+		int cwid = paramHelper.getCwid();
+		int cdid = paramHelper.getCdid();
+		int cid = paramHelper.getcid();
+		hardCodedHid = getNextHistoryId(cwid, cdid, cid);
+		
+		widCon = new IntegerConstant(paramHelper.getWid());
+		didCon = new IntegerConstant(paramHelper.getDid());
+		cwidCon = new IntegerConstant(cwid);
+		cdidCon = new IntegerConstant(cdid);
+		cidCon = new IntegerConstant(cid);
+		hidCon = new IntegerConstant(hardCodedHid);
+		
+		// SELECT ... FROM warehouse WHERE w_id = w_id
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("w_id", widCon);
+		warehouseKey = new PrimaryKey("warehouse", keyEntryMap);
+		readSet.add(warehouseKey);
+		
+		// UPDATE ... FROM warehouse WHERE w_id = w_id
+		writeSet.add(warehouseKey);
+		
+		// SELECT ... FROM district WHERE d_w_id = wid AND d_id = did
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("d_w_id", widCon);
+		keyEntryMap.put("d_id", didCon);
+		districtKey = new PrimaryKey("district", keyEntryMap);
+		readSet.add(districtKey);
+		
+		// UPDATE ... WHERE d_w_id = wid AND d_id = did
+		writeSet.add(districtKey);
+		
+		// SELECT ... FROM customer WHERE c_w_id = cwid AND c_d_id = cdid AND c_id = cidInt
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("c_w_id", cwidCon);
+		keyEntryMap.put("c_d_id", cdidCon);
+		keyEntryMap.put("c_id", cidCon);
+		customerKey = new PrimaryKey("customer", keyEntryMap);
+		readSet.add(customerKey);
+		
+		// UPDATE ... FROM customer WHERE c_w_id = cwid AND c_d_id = cdid AND c_id = cidInt
+		writeSet.add(customerKey);
+		
+		// INSERT INTO history h_id, h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("h_id", hidCon);
+		keyEntryMap.put("h_c_id", cidCon);
+		keyEntryMap.put("h_c_d_id", cdidCon);
+		keyEntryMap.put("h_c_w_id", cwidCon);
+		historyKey = new PrimaryKey("history", keyEntryMap);
+		writeSet.add(historyKey);
+	}
+	
 
 	@Override
 	protected void executeSql() {
@@ -166,10 +256,10 @@ public class PaymentProc extends StoredProcedure<PaymentProcParamHelper> {
 		// INSERT INTO history (h_c_id, h_c_d_id, h_c_w_id, h_d_id, h_w_id,
 		// h_date, h_amount, h_data) VALUES (cid, cdid, cwid, did, wid, hDate,
 		// hAmount, hData)
-		sql = String.format("INSERT INTO history (h_c_id, h_c_d_id, h_c_w_id, h_d_id, "
-				+ "h_w_id, h_date, h_amount, h_data) VALUES ( %d, %d, %d, %d, "
+		sql = String.format("INSERT INTO history (h_id, h_c_id, h_c_d_id, h_c_w_id, h_d_id, "
+				+ "h_w_id, h_date, h_amount, h_data) VALUES ( %d, %d, %d, %d, %d, "
 				+ "%d, %d, %f, '%s')",
-				cid, cdid, cwid, did, wid, hDate, hAmount, hData);
+				hardCodedHid, cid, cdid, cwid, did, wid, hDate, hAmount, hData);
 		StoredProcedureHelper.executeUpdate(sql, tx);
 	}
 }

@@ -27,6 +27,11 @@ public class TpccSchemaBuilderProc extends StoredProcedure<TpccSchemaBuilderProc
 	}
 
 	@Override
+	protected void prepareKeys() {
+		// Do nothing
+	}
+
+	@Override
 	protected void executeSql() {
 		TpccSchemaBuilderProcParamHelper paramHelper = getParamHelper();
 		Transaction tx = getTransaction();

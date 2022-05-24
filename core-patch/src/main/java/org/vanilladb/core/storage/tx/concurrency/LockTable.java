@@ -40,7 +40,7 @@ import org.vanilladb.core.util.CoreProperties;
  * is resolved. Currently, there is only one wait list for all items.
  * </p>
  */
-public class LockTable {
+class LockTable {
 	private static final long MAX_TIME;
 	private static final long EPSILON;
 	final static int IS_LOCK = 0, IX_LOCK = 1, S_LOCK = 2, SIX_LOCK = 3, X_LOCK = 4;
@@ -169,7 +169,7 @@ public class LockTable {
 	 * @param txNum a transaction number
 	 * 
 	 */
-	public void sLock(Object obj, long txNum) {
+	void sLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
 		try {
@@ -211,7 +211,7 @@ public class LockTable {
 	 * @param txNum a transaction number
 	 * 
 	 */
-	public void xLock(Object obj, long txNum) {
+	void xLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
 		try {
@@ -253,7 +253,7 @@ public class LockTable {
 	 * @param txNum a transaction number
 	 * 
 	 */
-	public void sixLock(Object obj, long txNum) {
+	void sixLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
 		try {
@@ -294,7 +294,7 @@ public class LockTable {
 	 * @param obj   a lockable item
 	 * @param txNum a transaction number
 	 */
-	public void isLock(Object obj, long txNum) {
+	void isLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
 		try {
@@ -333,7 +333,7 @@ public class LockTable {
 	 * @param obj   a lockable item
 	 * @param txNum a transaction number
 	 */
-	public void ixLock(Object obj, long txNum) {
+	void ixLock(Object obj, long txNum) {
 		Object anchor = getAnchor(obj);
 		txWaitMap.put(txNum, anchor);
 		try {
@@ -374,7 +374,7 @@ public class LockTable {
 	 * @param txNum    a transaction number
 	 * @param lockType the type of lock
 	 */
-	public void release(Object obj, long txNum, int lockType) {
+	void release(Object obj, long txNum, int lockType) {
 		Object anchor = getAnchor(obj);
 		synchronized (anchor) {
 			Lockers lks = lockerMap.get(obj);
@@ -408,7 +408,7 @@ public class LockTable {
 	 * 
 	 * @param sLockOnly release slocks only
 	 */
-	public void releaseAll(long txNum, boolean sLockOnly) {
+	void releaseAll(long txNum, boolean sLockOnly) {
 		Set<Object> objectsToRelease = getObjectSet(txNum);
 		for (Object obj : objectsToRelease) {
 			Object anchor = getAnchor(obj);

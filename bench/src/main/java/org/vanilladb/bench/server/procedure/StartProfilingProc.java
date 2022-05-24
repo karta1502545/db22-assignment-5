@@ -26,6 +26,11 @@ public class StartProfilingProc extends StoredProcedure<StoredProcedureParamHelp
 	}
 
 	@Override
+	protected void prepareKeys() {
+		// Do nothing
+	}
+
+	@Override
 	protected void executeSql() {
 		VanillaDb.initAndStartProfiler();
 	}

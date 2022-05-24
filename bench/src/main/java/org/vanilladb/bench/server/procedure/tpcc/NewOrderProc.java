@@ -15,9 +15,18 @@
  *******************************************************************************/
 package org.vanilladb.bench.server.procedure.tpcc;
 
+import java.util.HashMap;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import org.vanilladb.bench.benchmarks.tpcc.TpccConstants;
+import org.vanilladb.bench.benchmarks.tpcc.TpccParameters;
 import org.vanilladb.bench.server.param.tpcc.NewOrderProcParamHelper;
 import org.vanilladb.bench.server.procedure.StoredProcedureHelper;
 import org.vanilladb.core.query.algebra.Scan;
+import org.vanilladb.core.sql.Constant;
+import org.vanilladb.core.sql.IntegerConstant;
+import org.vanilladb.core.sql.PrimaryKey;
 import org.vanilladb.core.sql.storedprocedure.StoredProcedure;
 import org.vanilladb.core.storage.tx.Transaction;
 
@@ -39,8 +48,129 @@ import org.vanilladb.core.storage.tx.Transaction;
  */
 public class NewOrderProc extends StoredProcedure<NewOrderProcParamHelper> {
 
+	private static final AtomicInteger[] distrOIds;
+	
+	static {
+		int warehouseCount = TpccParameters.NUM_WAREHOUSES;
+		distrOIds = new AtomicInteger[warehouseCount * TpccConstants.DISTRICTS_PER_WAREHOUSE + 100];
+		for (int i = 0; i < distrOIds.length; i++)
+			distrOIds[i] = new AtomicInteger(3001);
+	}
+	
+	public static int getNextOrderId(int wid, int did) {
+		return distrOIds[(wid - 1) * 10 + did - 1].getAndIncrement();
+	}
+	
 	public NewOrderProc() {
 		super(new NewOrderProcParamHelper());
+	}
+	
+	// Record keys for retrieving data
+	private PrimaryKey warehouseKey, districtKey, customerKey;
+	private PrimaryKey orderKey, newOrderKey;
+	// a {itemKey, stockKey, orderLineKey} per order line
+	private PrimaryKey[][] orderLineKeys = new PrimaryKey[15][3];
+	// SQL Constants
+	Constant widCon, didCon, cidCon, oidCon;
+	
+	private int hardCodedOid;
+	
+	private Map<String, Constant> keyEntryMap;
+	
+	@Override
+	protected void prepareKeys() {
+		NewOrderProcParamHelper paramHelper = getParamHelper();
+		
+		// Construct constant from parameters
+		widCon = new IntegerConstant(paramHelper.getWid());
+		didCon = new IntegerConstant(paramHelper.getDid());
+		cidCon = new IntegerConstant(paramHelper.getCid());
+		
+		// hard code the next order id
+		hardCodedOid = getNextOrderId(paramHelper.getWid(), paramHelper.getDid());
+		oidCon = new IntegerConstant(hardCodedOid);
+		
+		// ========== Keys for step 1 ==========
+		
+		// SELECT ... FROM warehouse WHERE w_id = wid
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("w_id", widCon);
+		warehouseKey = new PrimaryKey("warehouse", keyEntryMap);
+		readSet.add(warehouseKey);
+		
+		// SELECT ... FROM district WHERE d_w_id = wid AND d_id = did
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("d_w_id", widCon);
+		keyEntryMap.put("d_id", didCon);
+		districtKey = new PrimaryKey("district", keyEntryMap);
+		readSet.add(districtKey);
+		
+		// UPDATE ... WHERE d_w_id = wid AND d_id = did
+		writeSet.add(districtKey);
+		
+		// SELECT ... WHERE c_w_id = wid AND c_d_id = did AND c_id = cid
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("c_w_id", widCon);
+		keyEntryMap.put("c_d_id", didCon);
+		keyEntryMap.put("c_id", cidCon);
+		customerKey = new PrimaryKey("customer", keyEntryMap);
+		readSet.add(customerKey);
+		
+		// INSERT INTO orders (o_id, o_w_id, o_d_id, ...) VALUES (next0Id, wid, did, ...)
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("o_w_id", widCon);
+		keyEntryMap.put("o_d_id", didCon);
+		keyEntryMap.put("o_id", oidCon);
+		orderKey = new PrimaryKey("orders", keyEntryMap);
+		writeSet.add(orderKey);
+		
+		// INSERT INTO new_order (no_o_id, no_w_id, no_d_id) VALUES (next0Id, wid, did)
+		keyEntryMap = new HashMap<String, Constant>();
+		keyEntryMap.put("no_w_id", widCon);
+		keyEntryMap.put("no_d_id", didCon);
+		keyEntryMap.put("no_o_id", oidCon);
+		newOrderKey = new PrimaryKey("new_order", keyEntryMap);
+		writeSet.add(newOrderKey);
+		
+		// ========== Keys for step 2 ==========
+		int orderLineCount = paramHelper.getOlCount();
+		int[][] items = paramHelper.getItems();
+		
+		// For each order line
+		for (int i = 0; i < orderLineCount; i++) {
+			// initialize variables
+			int olIId = items[i][0];
+			int olSupplyWId = items[i][1];
+			Constant olIIdCon = new IntegerConstant(olIId);
+			Constant supWidCon = new IntegerConstant(olSupplyWId);
+			Constant olNumCon = new IntegerConstant(i + 1);
+			
+			// SELECT ... FROM item WHERE i_id = olIId
+			keyEntryMap = new HashMap<String, Constant>();
+			keyEntryMap.put("i_id", olIIdCon);
+			orderLineKeys[i][0] = new PrimaryKey("item", keyEntryMap);
+			readSet.add(orderLineKeys[i][0]);
+			
+			// SELECT ... FROM stock WHERE s_i_id = olIId AND s_w_id = olSupplyWId
+			keyEntryMap = new HashMap<String, Constant>();
+			keyEntryMap.put("s_i_id", olIIdCon);
+			keyEntryMap.put("s_w_id", supWidCon);
+			orderLineKeys[i][1] = new PrimaryKey("stock", keyEntryMap);
+			readSet.add(orderLineKeys[i][1]);
+			
+			// UPDATE ... WHERE s_i_id = olIId AND s_w_id = olSupplyWId
+			writeSet.add(orderLineKeys[i][1]);
+			
+			// INSERT INTO order_line (ol_o_id, ol_w_id, ol_d_id, ol_number, ...)
+			// VALUES (nextOId, wid, did, i, ...)
+			keyEntryMap = new HashMap<String, Constant>();
+			keyEntryMap.put("ol_o_id", oidCon);
+			keyEntryMap.put("ol_d_id", didCon);
+			keyEntryMap.put("ol_w_id", widCon);
+			keyEntryMap.put("ol_number", olNumCon);
+			orderLineKeys[i][2] = new PrimaryKey("order_line", keyEntryMap);
+			writeSet.add(orderLineKeys[i][2]);
+		}
 	}
 
 	@Override
@@ -69,7 +199,9 @@ public class NewOrderProc extends StoredProcedure<NewOrderProcParamHelper> {
 		s.beforeFirst();
 		if (!s.next())
 			throw new RuntimeException("Executing '" + sql + "' fails");
-		nextOid = (Integer) s.getVal("d_next_o_id").asJavaVal();
+		// Use a hard-coded OrderID
+//		nextOid = (Integer) s.getVal("d_next_o_id").asJavaVal();
+		nextOid = hardCodedOid;
 		paramHelper.setdTax((Double) s.getVal("d_tax").asJavaVal());
 		s.close();
 		

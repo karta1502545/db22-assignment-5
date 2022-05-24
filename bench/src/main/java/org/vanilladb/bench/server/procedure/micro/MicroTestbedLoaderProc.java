@@ -35,6 +35,11 @@ public class MicroTestbedLoaderProc extends StoredProcedure<TestbedLoaderParamHe
 	}
 
 	@Override
+	protected void prepareKeys() {
+		// Do nothing
+	}
+
+	@Override
 	protected void executeSql() {
 		if (logger.isLoggable(Level.INFO))
 			logger.info("Start loading testbed...");

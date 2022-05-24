@@ -39,6 +39,11 @@ public class TpccTestbedLoaderProc extends StoredProcedure<StoredProcedureParamH
 	public TpccTestbedLoaderProc() {
 		super(StoredProcedureParamHelper.newDefaultParamHelper());
 	}
+
+	@Override
+	protected void prepareKeys() {
+		// Do nothing
+	}
 	
 	@Override
 	protected void executeSql() {
@@ -285,8 +290,8 @@ public class TpccTestbedLoaderProc extends StoredProcedure<StoredProcedureParamH
 			hdata = rg.randomAString(TpccConstants.MIN_DATA, TpccConstants.MAX_DATA);
 			hdate = System.currentTimeMillis();
 
-			String sql = "INSERT INTO history(h_c_id, h_c_d_id, h_c_w_id, "
-					+ "h_d_id,h_w_id, h_date, h_amount, h_data ) VALUES (" + hcid + ", " + did + "," + wid + ","
+			String sql = "INSERT INTO history(h_id, h_c_id, h_c_d_id, h_c_w_id, "
+					+ "h_d_id,h_w_id, h_date, h_amount, h_data ) VALUES (1, " + hcid + ", " + did + "," + wid + ","
 					+ did + "," + wid + "," + hdate + "," + DoublePlainPrinter.toPlainString(hamount) + ", '" + hdata
 					+ "')";
 			StoredProcedureHelper.executeUpdate(sql, tx);

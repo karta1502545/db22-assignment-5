@@ -26,6 +26,11 @@ public class StopProfilingProc extends StoredProcedure<StoredProcedureParamHelpe
 	}
 
 	@Override
+	protected void prepareKeys() {
+		// Do nothing
+	}
+
+	@Override
 	protected void executeSql() {
 		VanillaDb.stopProfilerAndReport();
 	}

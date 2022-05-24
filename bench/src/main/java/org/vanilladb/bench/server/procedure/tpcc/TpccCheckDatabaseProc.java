@@ -18,6 +18,11 @@ public class TpccCheckDatabaseProc extends StoredProcedure<StoredProcedureParamH
 	}
 
 	@Override
+	protected void prepareKeys() {
+		// Do nothing
+	}
+
+	@Override
 	protected void executeSql() {
 		if (logger.isLoggable(Level.INFO))
 			logger.info("Checking database for the TPC-C benchmarks...");

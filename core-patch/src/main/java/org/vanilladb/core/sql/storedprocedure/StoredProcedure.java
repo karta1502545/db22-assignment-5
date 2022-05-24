@@ -16,14 +16,19 @@
 package org.vanilladb.core.sql.storedprocedure;
 
 import java.sql.Connection;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import org.vanilladb.core.query.planner.BadSemanticException;
 import org.vanilladb.core.remote.storedprocedure.SpResultSet;
 import org.vanilladb.core.server.VanillaDb;
+import org.vanilladb.core.sql.PrimaryKey;
 import org.vanilladb.core.storage.tx.Transaction;
 import org.vanilladb.core.storage.tx.concurrency.LockAbortException;
+import org.vanilladb.core.storage.tx.concurrency.conservative.ConservativeConcurrencyMgr;
 
 /**
  * An abstract class that denotes the stored procedure supported in VanillaDb.
@@ -32,31 +37,67 @@ public abstract class StoredProcedure<H extends StoredProcedureParamHelper> {
 	private static Logger logger = Logger.getLogger(StoredProcedure.class
 			.getName());
 	
+	private static final ReentrantLock SERIAL_CONTROL_LOCK = new ReentrantLock();
+	
+	private Transaction scheduleTransactionSerially(boolean isReadOnly,
+			Set<PrimaryKey> readSet, Set<PrimaryKey> writeSet) {
+		SERIAL_CONTROL_LOCK.lock();
+		try {
+			Transaction tx = VanillaDb.txMgr().newTransaction(
+					Connection.TRANSACTION_SERIALIZABLE, isReadOnly);
+			
+			ConservativeConcurrencyMgr ccMgr = (ConservativeConcurrencyMgr) tx.concurrencyMgr();
+			
+			// Reserve lock so that deterministic ordering is ensured
+			ccMgr.bookReadKeys(readSet);
+			ccMgr.bookWriteKeys(writeSet);
+			
+			return tx;
+		} finally {
+			SERIAL_CONTROL_LOCK.unlock();
+		}
+	}
+	
+	protected Set<PrimaryKey> readSet = new HashSet<PrimaryKey>();
+	protected Set<PrimaryKey> writeSet = new HashSet<PrimaryKey>();
+	
 	private H paramHelper;
 	private Transaction tx;
 	
 	public StoredProcedure(H helper) {
 		if (helper == null)
 			throw new IllegalArgumentException("paramHelper should not be null");
+		
 		paramHelper = helper;
 	}
+	
+	// Child classes of stored procedure should provide prepareKeys implementation
+	protected abstract void prepareKeys();
 	
 	public void prepare(Object... pars) {
 		// prepare parameters
 		paramHelper.prepareParameters(pars);
 		
+		// Collect read/write sets
+		prepareKeys();
+		
 		// create a transaction
 		boolean isReadOnly = paramHelper.isReadOnly();
-		tx = VanillaDb.txMgr().newTransaction(
-			Connection.TRANSACTION_SERIALIZABLE, isReadOnly);
-			// TODO: We may need to change isolation mode
+		tx = scheduleTransactionSerially(isReadOnly, readSet, writeSet);
+		
 	}
 	
 	public SpResultSet execute() {
 		boolean isCommitted = false;
 		
 		try {
+			ConservativeConcurrencyMgr ccMgr = (ConservativeConcurrencyMgr) tx.concurrencyMgr();
+			
+			// Acquire locks before execution
+			ccMgr.acquireBookedLocks();
+			
 			executeSql();
+			
 			// The transaction finishes normally
 			tx.commit();
 			isCommitted = true;
